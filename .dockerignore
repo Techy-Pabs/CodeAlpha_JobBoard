@@ -1,0 +1,20 @@
+# Keep secrets, local environments, uploads and caches out of the image.
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+.git/
+.githooks/
+.github/
+.claude/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+staticfiles/
+media/
+docs/
+db.sqlite3
+docker-compose.yml
+Dockerfile

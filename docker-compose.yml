@@ -1,4 +1,5 @@
-# Local PostgreSQL for development. Host port 5436 (Task 2 uses 5434, Task 1 5435).
+# Local development. Host ports: Postgres 5436, the API 8003
+# (Task 1 uses 5435, Task 2 uses 5434 and 8001).
 name: codealpha_jobboard
 
 services:
@@ -18,5 +19,27 @@ services:
       timeout: 5s
       retries: 10
 
+  web:
+    build: .
+    env_file: .env
+    environment:
+      # .env points at localhost:5436 for running on the host. Inside the
+      # Docker network the database is the "db" service on port 5432.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports:
+      - "8003:8000"
+    volumes:
+      # Uploaded resumes (when R2 isn't configured) survive rebuilds.
+      - media_data:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
+  media_data:

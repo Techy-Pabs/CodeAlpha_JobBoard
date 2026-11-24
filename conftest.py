@@ -25,6 +25,19 @@ def media_root(settings):
         yield Path(folder)
 
 
+@pytest.fixture(autouse=True)
+def _plain_static_storage(settings):
+    """Tests don't run collectstatic, so skip WhiteNoise's manifest lookup.
+
+    With DEBUG off (as in CI) the manifest storage refuses any static file
+    missing from the manifest, which would break every admin page test.
+    """
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+
+
 @pytest.fixture
 def api_client():
     return APIClient()
