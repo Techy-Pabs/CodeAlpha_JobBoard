@@ -184,6 +184,11 @@ SPECTACULAR_SETTINGS = {
     # Separate request and response schemas: request bodies leave out
     # read-only fields, and file fields show as an upload button in Swagger.
     "COMPONENT_SPLIT_REQUEST": True,
+    # Jobs and applications both have a "status" field: name each enum.
+    "ENUM_NAME_OVERRIDES": {
+        "JobStatusEnum": "jobs.models.JobStatus",
+        "ApplicationStatusEnum": "applications.models.ApplicationStatus",
+    },
 }
 
 

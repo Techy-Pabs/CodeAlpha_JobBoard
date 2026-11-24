@@ -71,7 +71,8 @@ class ApplicationStatusChange(models.Model):
     application = models.ForeignKey(
         Application, on_delete=models.CASCADE, related_name="status_changes"
     )
-    from_status = models.CharField(max_length=20, choices=ApplicationStatus.choices)
+    # Blank on the first row of every history: "" -> submitted, when applying.
+    from_status = models.CharField(max_length=20, choices=ApplicationStatus.choices, blank=True)
     to_status = models.CharField(max_length=20, choices=ApplicationStatus.choices)
     # SET_NULL: the history survives if the person who made the change is deleted.
     changed_by = models.ForeignKey(
