@@ -319,6 +319,161 @@ value copied from your local `.env`. Turn it on once per clone:
 git config core.hooksPath .githooks
 ```
 
+## Deployment
+
+The plan is: the API on [Render](https://render.com) as a free Docker web
+service, the database on [Neon](https://neon.tech) (free PostgreSQL), and
+resumes in a private [Cloudflare R2](https://developers.cloudflare.com/r2/)
+bucket. Docker Compose is only for local development.
+
+### What the container does when it starts
+
+`docker/entrypoint.sh` runs these steps in order. If any of them fails, it
+prints a line starting with `ERROR:` and exits without starting the app. On
+Render the deploy is then marked as failed and the previous version keeps
+serving.
+
+1. Waits for the database (up to 30 seconds).
+2. Applies migrations.
+3. Creates the admin account from the `DJANGO_SUPERUSER_*` variables, if all
+   three are set and that username doesn't exist yet. An existing account is
+   left alone, so a password you change in the admin isn't reset on the next
+   start. The password is never printed.
+4. Runs `seed_demo --force` if `SEED_DEMO_ON_START` is `True`.
+5. Starts gunicorn on `0.0.0.0:$PORT` with `WEB_CONCURRENCY` workers.
+
+Steps 3 and 4 exist because Render's free plan has no shell.
+
+### 1. Create the database on Neon
+
+1. Create a Neon project with PostgreSQL 16, in a region close to the Render
+   region you'll pick.
+2. On the project dashboard, open **Connect** and turn off **Connection
+   pooling**, so you get the direct connection string (its host name doesn't
+   contain `-pooler`). The app keeps its own connections open for up to a
+   minute and runs migrations on every start, so it doesn't need the pooler.
+3. Copy the connection string. It looks like this:
+
+   ```
+   postgresql://USER:PASSWORD@ep-example-123456.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+   ```
+
+   Paste it into Render as `DATABASE_URL`, unchanged. The `sslmode` and
+   `channel_binding` options are passed to the driver, so the connection is
+   encrypted. The whole string is a secret, because it contains the password.
+
+The migrations create the tables, including the search index, on the first
+start.
+
+### 2. Create a private bucket on Cloudflare R2
+
+Render's disk is wiped on every deploy, so resumes must live somewhere else.
+
+1. In the Cloudflare dashboard, open **R2 Object Storage** and choose
+   **Create bucket**. Name it `codealpha-jobboard`. Leave the location on
+   automatic and don't pick a jurisdiction (the app uses the default R2
+   endpoint).
+2. Leave the bucket private. Don't turn on the `r2.dev` public URL and don't
+   connect a custom domain. The app never needs either: every download goes
+   through the API's permission check, and the app streams the file itself.
+   CORS settings aren't needed either, since browsers never talk to the
+   bucket.
+3. Back on the R2 overview page, choose **Manage API tokens**, then
+   **Create API token** (an account token is fine).
+   - **Permissions:** Object Read & Write.
+   - **Specify bucket(s):** Apply to specific buckets only, and pick
+     `codealpha-jobboard`. The token then can't touch any other bucket, and
+     can't change bucket settings.
+   - Leave the TTL as you like and create the token.
+4. Copy the **Access Key ID** and **Secret Access Key** straight into Render
+   (or a password manager). Cloudflare shows the secret only once.
+5. Copy your **Account ID** from the R2 overview page (it's also the first
+   part of the S3 endpoint, `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`).
+
+These become `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_ACCOUNT_ID`,
+with `R2_BUCKET_NAME=codealpha-jobboard`. Set all four or none: with only
+some of them, the app refuses to start and names the missing ones.
+
+### 3. Create the web service on Render
+
+1. In Render, choose **New**, then **Web Service**, and connect this GitHub
+   repository on the `main` branch.
+2. Set **Language** to **Docker**. Render builds the `Dockerfile` in the
+   project root. Leave the Docker command empty, so the image's own
+   entrypoint and gunicorn command run.
+3. Choose the **Free** instance type, in a region close to your Neon region.
+4. Under **Advanced**, set **Health Check Path** to `/api/health/`. It
+   returns 200 only when the database answers, and it's never redirected to
+   HTTPS.
+5. Add the environment variables below and create the service.
+
+Every push to `main` then builds and deploys a new version.
+
+**Use the real URL (the lesson from Task 1).** Render builds the address from
+the service name, but if that name is taken it adds a suffix, so
+`codealpha-jobboard` can become something like
+`codealpha-jobboard-x7k2.onrender.com`. Django rejects any request whose host
+isn't in `ALLOWED_HOSTS` (you get a 400), and the admin login fails its CSRF
+check if the origin isn't in `CSRF_TRUSTED_ORIGINS`. So don't guess: create
+the service, copy the URL Render shows at the top of the service page, then
+set both variables to match it exactly and let it redeploy.
+
+### Environment variables on Render
+
+| Variable | Value | What it's for |
+| --- | --- | --- |
+| `SECRET_KEY` | A new random value, not your local one | Django's signing key for sessions, CSRF and password reset links |
+| `JWT_SIGNING_KEY` | A different new random value | Signs the API's access and refresh tokens |
+| `DEBUG` | `False` | Turns off debug pages and turns on the production hardening |
+| `ALLOWED_HOSTS` | `codealpha-jobboard.onrender.com` (your real host) | The host name the app answers to |
+| `CSRF_TRUSTED_ORIGINS` | `https://codealpha-jobboard.onrender.com` (your real URL) | Lets the admin login form work over HTTPS |
+| `SECURE_SSL_REDIRECT` | `True` | Redirects HTTP to HTTPS and sends a one-day HSTS header |
+| `SECURE_COOKIES` | `True` | Session and CSRF cookies over HTTPS only |
+| `DATABASE_URL` | The Neon direct connection string, unchanged | How the app reaches the database |
+| `NUM_PROXIES` | `1` | Lets rate limiting see each visitor's IP instead of Render's proxy (see Task 2's README for how to check it) |
+| `R2_ACCOUNT_ID` | Your Cloudflare account ID | Builds the R2 endpoint address |
+| `R2_ACCESS_KEY_ID` | From the R2 API token | R2 login |
+| `R2_SECRET_ACCESS_KEY` | From the R2 API token | R2 login |
+| `R2_BUCKET_NAME` | `codealpha-jobboard` | Where resumes are stored |
+| `DJANGO_SUPERUSER_USERNAME` | e.g. `admin` | Admin account created on start |
+| `DJANGO_SUPERUSER_EMAIL` | Your email | That account's email |
+| `DJANGO_SUPERUSER_PASSWORD` | A new strong password | Its password. It must pass Django's password checks, or startup stops with the reason |
+| `SEED_DEMO_ON_START` | `True` for a demo, otherwise leave it out | Loads the demo employers, candidates, jobs and applications on every start |
+| `DEMO_PASSWORD` | A new random value | Password of the demo accounts. Required when `SEED_DEMO_ON_START` is `True` |
+| `EMAIL_HOST` | Optional | SMTP server. Without it, notification emails are written to Render's logs instead of sent |
+| `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` | Optional (`587`, your login, `True`) | SMTP settings, only with `EMAIL_HOST` |
+| `DEFAULT_FROM_EMAIL` | Optional | Sender address of notification emails |
+| `WEB_CONCURRENCY` | Optional, default `2` | gunicorn workers. Keep 2 on the free plan |
+| `DATABASE_CONN_MAX_AGE` | Optional, default `60` | Seconds to reuse a database connection |
+
+Not needed on Render: `PORT` (Render sets it) and `POSTGRES_DB`,
+`POSTGRES_USER` and `POSTGRES_PASSWORD` (they only configure the local
+database container).
+
+Generate random values with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+After the first successful deploy you can delete the three
+`DJANGO_SUPERUSER_*` variables. The account stays in the database.
+
+### Free plan behaviour
+
+- **It sleeps.** A free Render web service sleeps after about 15 minutes
+  without requests. The next request wakes it, which can take up to a
+  minute, because the container also reruns migrations and the startup
+  tasks. It's fast again once awake.
+- **Demo data reloads on every wake-up** while `SEED_DEMO_ON_START` is
+  `True`. Nothing is duplicated, but demo applications that visitors moved
+  are put back to their demo state.
+- **Neon pauses too.** Neon's free plan suspends an idle database and resumes
+  it on the next query, which adds a short delay. Connections Neon closed are
+  detected and replaced (`CONN_HEALTH_CHECKS`), so they don't cause errors.
+- **512 MB of RAM**, which is why the default is two gunicorn workers.
+- **No shell.** Use the startup variables above instead of `manage.py`.
+
 ## Production notes
 
 - The Docker image runs as an unprivileged user that can only write to the
