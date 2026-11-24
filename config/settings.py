@@ -37,6 +37,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Full-text search lookups (SearchVector, SearchQuery) for job search.
+    "django.contrib.postgres",
     # Third-party
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
