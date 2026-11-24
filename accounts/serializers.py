@@ -81,3 +81,33 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
+
+
+PROFILE_FIELD_REQUIRED = "This field is required to complete your profile."
+ROLE_IS_FIXED = "Your role cannot be changed."
+
+
+class ProfileSerializerMixin:
+    """Shared rules for the employer and candidate "my profile" serializers.
+
+    PATCH sends only some fields, so completeness is checked on the profile as
+    it will be after the update: what was sent, falling back to what is stored.
+    """
+
+    #: Fields that must be non-blank once the update is applied.
+    required_to_complete: tuple[str, ...] = ()
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        errors = {}
+        # role is not a field of these serializers, so DRF would silently drop
+        # it. Say so instead, so nobody thinks their role was changed.
+        if "role" in getattr(self, "initial_data", {}):
+            errors["role"] = [ROLE_IS_FIXED]
+        for field in self.required_to_complete:
+            value = attrs.get(field, getattr(self.instance, field, ""))
+            if not (value or "").strip():
+                errors[field] = [PROFILE_FIELD_REQUIRED]
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs

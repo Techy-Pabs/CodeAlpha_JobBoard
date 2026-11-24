@@ -28,10 +28,11 @@ def employer_user(django_user_model):
 
 @pytest.fixture
 def employer(employer_user):
-    """The EmployerProfile created automatically for employer_user."""
+    """The EmployerProfile created automatically for employer_user, filled in."""
     profile = employer_user.employer_profile
     profile.company_name = "Acme Ltd"
     profile.location = "Lagos"
+    profile.description = "We build logistics software."
     profile.save()
     return profile
 

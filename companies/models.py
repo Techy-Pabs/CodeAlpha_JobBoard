@@ -4,6 +4,9 @@ from django.db import models
 
 from accounts.models import Role
 
+# Must be filled in before the employer can post a job.
+EMPLOYER_REQUIRED_FIELDS = ("company_name", "location", "description")
+
 
 class EmployerProfile(models.Model):
     """The company behind an employer account. One per employer user.
@@ -29,6 +32,10 @@ class EmployerProfile(models.Model):
 
     def __str__(self):
         return self.company_name or f"(unnamed company of {self.user})"
+
+    @property
+    def is_complete(self):
+        return all(getattr(self, f).strip() for f in EMPLOYER_REQUIRED_FIELDS)
 
     def clean(self):
         if self.user_id and self.user.role != Role.EMPLOYER:

@@ -72,7 +72,9 @@ def test_upload_to_uses_a_random_name(uploaded, suffix):
     path = resume_upload_to(None, uploaded)
     assert RANDOM_NAME.match(path), path
     assert path.endswith(suffix)
-    assert ".." not in path and "passwd" not in path and "ada" not in path.lower()
+    # The regex already proves the name is 32 hex digits. (Don't test for "ada":
+    # a random hex string can contain those letters.)
+    assert ".." not in path and "passwd" not in path and "exe" not in path
 
 
 def test_upload_to_never_repeats():
@@ -89,6 +91,6 @@ def test_saved_file_does_not_contain_users_name(candidate, settings, tmp_path):
         size_bytes=upload.size,
     )
     assert RANDOM_NAME.match(resume.file.name), resume.file.name
-    assert "ada" not in resume.file.name.lower()
+    assert "lovelace" not in resume.file.name.lower()  # not hex, so never there by chance
     assert resume.original_filename == "Ada Lovelace CV.pdf"
     assert (tmp_path / resume.file.name).read_bytes() == b"%PDF-1.4 test"

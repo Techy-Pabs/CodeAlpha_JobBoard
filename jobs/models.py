@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import F, Q
+from django.utils import timezone
 
 from companies.models import EmployerProfile
 
@@ -29,6 +30,22 @@ class JobStatus(models.TextChoices):
     CLOSED = "closed", "Closed"
 
 
+def open_jobs_q(prefix=""):
+    """Q for jobs that are open and not past closes_at: what the public sees.
+
+    prefix lets the same rule filter related rows, e.g. open_jobs_q("jobs__")
+    inside Count() on EmployerProfile.
+    """
+    return Q(**{f"{prefix}status": JobStatus.OPEN}) & (
+        Q(**{f"{prefix}closes_at__isnull": True}) | Q(**{f"{prefix}closes_at__gt": timezone.now()})
+    )
+
+
+class JobQuerySet(models.QuerySet):
+    def open(self):
+        return self.filter(open_jobs_q())
+
+
 class Job(models.Model):
     # PROTECT: a company with job posts can't be deleted by accident.
     employer = models.ForeignKey(EmployerProfile, on_delete=models.PROTECT, related_name="jobs")
@@ -47,6 +64,8 @@ class Job(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = JobQuerySet.as_manager()
+
     class Meta:
         ordering = ["-created_at"]
         constraints = [
@@ -62,3 +81,10 @@ class Job(models.Model):
 
     def __str__(self):
         return f"{self.title} at {self.employer}"
+
+    @property
+    def is_open(self):
+        """Open for applications right now (same rule as open_jobs_q)."""
+        return self.status == JobStatus.OPEN and (
+            self.closes_at is None or self.closes_at > timezone.now()
+        )

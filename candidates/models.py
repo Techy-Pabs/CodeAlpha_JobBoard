@@ -12,6 +12,9 @@ from accounts.models import Role
 RESUME_EXTENSIONS = ["pdf", "doc", "docx"]
 
 
+CANDIDATE_REQUIRED_FIELDS = ("headline", "location")
+
+
 class CandidateProfile(models.Model):
     """A job seeker's public profile. One per candidate user.
 
@@ -35,6 +38,10 @@ class CandidateProfile(models.Model):
 
     def __str__(self):
         return f"{self.user} ({self.headline})" if self.headline else str(self.user)
+
+    @property
+    def is_complete(self):
+        return all(getattr(self, f).strip() for f in CANDIDATE_REQUIRED_FIELDS)
 
     def clean(self):
         if self.user_id and self.user.role != Role.CANDIDATE:
