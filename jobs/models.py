@@ -1,8 +1,11 @@
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.db.models import F, Q
 from django.utils import timezone
 
 from companies.models import EmployerProfile
+
+from .search import SEARCH_INDEX_NAME, search_vector
 
 
 class JobType(models.TextChoices):
@@ -77,6 +80,11 @@ class Job(models.Model):
                 name="job_salary_max_gte_min",
                 violation_error_message="Maximum salary must be at least the minimum salary.",
             ),
+        ]
+        indexes = [
+            # Full-text search (?q=) on the exact weighted vector the search
+            # uses, so Postgres can find matches without reading every job.
+            GinIndex(search_vector(), name=SEARCH_INDEX_NAME),
         ]
 
     def __str__(self):

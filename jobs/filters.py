@@ -1,11 +1,11 @@
-from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
+from django.contrib.postgres.search import SearchQuery, SearchRank
 from django.db.models import F
 from rest_framework.exceptions import ValidationError
 from rest_framework.filters import BaseFilterBackend
 
 from .models import ExperienceLevel, JobType, WorkMode
+from .search import SEARCH_CONFIG, search_vector
 
-SEARCH_CONFIG = "english"  # stemming: "developers" matches "Developer"
 MAX_QUERY_LENGTH = 200
 
 CHOICE_PARAMS = {
@@ -14,15 +14,6 @@ CHOICE_PARAMS = {
     "experience_level": ExperienceLevel,
 }
 ORDERINGS = ("newest", "salary", "relevance")
-
-
-def search_vector():
-    """Title counts most, then skills, then description."""
-    return (
-        SearchVector("title", weight="A", config=SEARCH_CONFIG)
-        + SearchVector("skills", weight="B", config=SEARCH_CONFIG)
-        + SearchVector("description", weight="C", config=SEARCH_CONFIG)
-    )
 
 
 class JobSearchFilter(BaseFilterBackend):
