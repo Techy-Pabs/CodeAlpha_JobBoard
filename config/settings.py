@@ -127,6 +127,24 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
+# Email (notifications). Locally every email is printed to the console
+# instead of being sent. Tests swap in Django's in-memory backend.
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="Job Board <noreply@jobboard.local>")
+
+# Errors from code that must not fail a request (such as a failed
+# notification email) are logged to the console, where Docker collects them.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {
+        "notifications": {"level": "INFO"},
+    },
+}
+
+
 # Proxies in front of the app, for finding the client's IP when throttling.
 # Unset (or empty) keeps DRF's default; 0 means "ignore X-Forwarded-For".
 _num_proxies = env.str("NUM_PROXIES", default="").strip()

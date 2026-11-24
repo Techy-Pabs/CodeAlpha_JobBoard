@@ -143,3 +143,33 @@ class InvalidMoveSerializer(serializers.Serializer):
     detail = serializers.CharField()
     current_status = serializers.CharField()
     allowed_moves = serializers.ListField(child=serializers.CharField())
+
+
+def _status_counts_serializer(name):
+    """{"submitted": n, "reviewing": n, ...}: one integer field per status."""
+    fields = {status: serializers.IntegerField() for status in ApplicationStatus.values}
+    return type(name, (serializers.Serializer,), fields)
+
+
+StatusCountsSerializer = _status_counts_serializer("StatusCounts")
+
+
+class JobStatsSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    title = serializers.CharField()
+    status = serializers.CharField(help_text="The job's own status: draft, open or closed.")
+    applications = StatusCountsSerializer(help_text="Applications to this job, by status.")
+    total = serializers.IntegerField(help_text="All applications to this job.")
+
+
+class StatsTotalsSerializer(serializers.Serializer):
+    jobs = serializers.IntegerField()
+    applications = StatusCountsSerializer()
+    total = serializers.IntegerField()
+
+
+class EmployerStatsSerializer(serializers.Serializer):
+    """Body of GET /api/me/stats/ (for the API docs)."""
+
+    jobs = JobStatsSerializer(many=True)
+    totals = StatsTotalsSerializer()

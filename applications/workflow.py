@@ -9,6 +9,8 @@ from django.db import transaction
 from rest_framework import status as http
 from rest_framework.exceptions import APIException
 
+from notifications.services import notify_status_change
+
 from .models import Application, ApplicationStatus, ApplicationStatusChange
 
 S = ApplicationStatus
@@ -59,6 +61,8 @@ def move(application_id, to_status, *, by, note="", moves):
 
     The row is locked (SELECT ... FOR UPDATE) and its status re-read under the
     lock, so two requests can't both move it from the same old status.
+
+    The other side is notified once the transaction commits, never before.
     """
     with transaction.atomic():
         application = Application.objects.select_for_update().get(pk=application_id)
@@ -68,6 +72,9 @@ def move(application_id, to_status, *, by, note="", moves):
             raise InvalidMove(current, to_status, allowed)
         application.status = to_status
         application.save(update_fields=["status", "updated_at"])
+        # Queued now, sent only on commit: if the history row below fails,
+        # the rollback drops it and nobody is told.
+        notify_status_change(application, current, to_status, by)
         ApplicationStatusChange.objects.create(
             application=application,
             from_status=current,

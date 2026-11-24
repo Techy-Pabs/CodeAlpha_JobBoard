@@ -18,6 +18,7 @@ from applications.serializers import (
 )
 from applications.views import STATUS_PARAM, filter_by_status, with_details
 from config.exceptions import BadRequest, Conflict
+from notifications.services import notify_new_application
 
 from .filters import JobSearchFilter
 from .models import Job, JobStatus, open_jobs_q
@@ -194,6 +195,8 @@ class JobViewSet(viewsets.ModelViewSet):
                     resume=resume,
                     cover_letter=body.validated_data["cover_letter"],
                 )
+                # Sent to the employer only once everything below commits.
+                notify_new_application(application)
                 # First history row: from nothing to submitted.
                 ApplicationStatusChange.objects.create(
                     application=application,

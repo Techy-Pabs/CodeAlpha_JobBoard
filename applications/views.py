@@ -1,18 +1,21 @@
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import generics, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from accounts.permissions import IsCandidate, IsEmployer
+from jobs.models import Job
 
 from . import workflow
 from .models import Application, ApplicationStatus, ApplicationStatusChange
 from .permissions import IsApplicant, IsJobEmployer
 from .serializers import (
     ApplicationDetailSerializer,
+    EmployerStatsSerializer,
     InvalidMoveSerializer,
     MyApplicationSerializer,
     StatusChangeRequestSerializer,
@@ -155,4 +158,62 @@ class ApplicationViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
         body.is_valid(raise_exception=True)
         return self._move(
             ApplicationStatus.WITHDRAWN, body.validated_data["note"], workflow.CANDIDATE_MOVES
+        )
+
+
+@extend_schema(
+    summary="Application counts per job, by status (employers)",
+    description=(
+        "Every one of your jobs (drafts and closed ones too) with how many applications "
+        "it has in each status, plus totals across all your jobs."
+    ),
+    responses={
+        200: EmployerStatsSerializer,
+        401: NOT_LOGGED_IN,
+        403: OpenApiResponse(description="Not an employer account."),
+    },
+)
+class EmployerStatsView(APIView):
+    permission_classes = [IsEmployer]
+
+    def get(self, request):
+        statuses = list(ApplicationStatus.values)
+        # One query for any number of jobs: a GROUP BY job with one filtered
+        # COUNT per status. distinct=False is right: each application is
+        # counted once, since it belongs to exactly one job.
+        counts = {
+            status: Count("applications", filter=Q(applications__status=status))
+            for status in statuses
+        }
+        rows = (
+            Job.objects.filter(employer__user=request.user)
+            .annotate(total=Count("applications"), **{f"n_{s}": c for s, c in counts.items()})
+            .order_by("-created_at", "-id")
+            .values("id", "title", "status", "total", *[f"n_{s}" for s in statuses])
+        )
+
+        jobs = []
+        totals = dict.fromkeys(statuses, 0)
+        for row in rows:
+            by_status = {s: row[f"n_{s}"] for s in statuses}
+            for s, n in by_status.items():
+                totals[s] += n
+            jobs.append(
+                {
+                    "id": row["id"],
+                    "title": row["title"],
+                    "status": row["status"],
+                    "applications": by_status,
+                    "total": row["total"],
+                }
+            )
+        return Response(
+            {
+                "jobs": jobs,
+                "totals": {
+                    "jobs": len(jobs),
+                    "applications": totals,
+                    "total": sum(totals.values()),
+                },
+            }
         )
