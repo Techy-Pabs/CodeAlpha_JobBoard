@@ -1,3 +1,6 @@
+import tempfile
+from pathlib import Path
+
 import pytest
 from django.core.cache import cache
 from rest_framework.test import APIClient
@@ -9,6 +12,17 @@ def _clear_cache():
     cache.clear()
     yield
     cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def media_root(settings):
+    """Every test stores uploads in its own temporary folder, deleted afterwards.
+
+    Autouse, so no test can ever write into the real media/ folder.
+    """
+    with tempfile.TemporaryDirectory(prefix="jobboard-test-media-") as folder:
+        settings.MEDIA_ROOT = folder
+        yield Path(folder)
 
 
 @pytest.fixture

@@ -181,6 +181,9 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
     "SERVE_AUTHENTICATION": [],
     "SWAGGER_UI_SETTINGS": {"persistAuthorization": True},
+    # Separate request and response schemas: request bodies leave out
+    # read-only fields, and file fields show as an upload button in Swagger.
+    "COMPONENT_SPLIT_REQUEST": True,
 }
 
 
