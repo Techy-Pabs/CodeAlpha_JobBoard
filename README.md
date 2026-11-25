@@ -1,8 +1,13 @@
 # CodeAlpha Job Board
 
 [![CI](https://github.com/Techy-Pabs/CodeAlpha_JobBoard/actions/workflows/ci.yml/badge.svg)](https://github.com/Techy-Pabs/CodeAlpha_JobBoard/actions/workflows/ci.yml)
+[![Live demo](https://img.shields.io/badge/live%20demo-onrender.com-46e3b7)](https://codealpha-jobboard-lezq.onrender.com)
 
-**Live demo:** coming soon.
+**Live demo:** https://codealpha-jobboard-lezq.onrender.com (it opens the
+Swagger docs at [/api/docs/](https://codealpha-jobboard-lezq.onrender.com/api/docs/)).
+It runs on Render's free plan, which sleeps when idle, so the first load can
+take up to a minute. The demo data is reset on each restart, so changes you
+make to it don't last.
 
 A REST API for a job board. Employers post jobs and move applications
 through a hiring pipeline. Candidates search for jobs, upload resumes and
